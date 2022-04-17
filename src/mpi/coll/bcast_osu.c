@@ -2742,6 +2742,14 @@ conf_check_end:
         MV2_Bcast_function = &MPIR_Bcast_binomial_MV2;
     }
 
+
+    /*@Added by rubayet. Harded coded imposing knomila with factor 2*/
+	MV2_Bcast_intra_node_function = &MPIR_Knomial_Bcast_intra_node_MV2;
+        mv2_intra_node_knomial_factor = 2;
+    /*Added by rubayet*/	
+
+
+
 skip_tuning_tables:
 #if defined CHANNEL_MRAIL_GEN2
     if (mv2_enable_zcpy_bcast == 0) { 
@@ -2809,6 +2817,11 @@ skip_tuning_tables:
             /* We are now done with the inter-node phase */
             if (comm_ptr->dev.ch.intra_node_done == 0) {
 
+		    /*@Added by rubayet. Harded coded imposing knomila with factor 2*/
+        		//MV2_Bcast_intra_node_function = &MPIR_Knomial_Bcast_intra_node_MV2;
+        		//mv2_intra_node_knomial_factor = 2;
+		    /*Added by rubayet*/
+	
                 if (!is_contig || !is_homogeneous) {
                     mpi_errno = MV2_Bcast_intra_node_function(tmp_buf, nbytes,
                                                               MPI_BYTE, INTRA_NODE_ROOT, shmem_commptr,
@@ -2819,6 +2832,19 @@ skip_tuning_tables:
                                                               errflag);
 
                 }
+
+		/*Added by rubayet*/
+		/*if (!is_contig || !is_homogeneous) {
+                    mpi_errno = MV2_Bcast_intra_node_function(tmp_buf, nbytes,
+                                                              MPI_BYTE, INTRA_NODE_ROOT, comm_ptr,
+                                                              errflag);
+                } else {
+                    mpi_errno = MV2_Bcast_intra_node_function(buffer, count,
+                                                              datatype, INTRA_NODE_ROOT, comm_ptr,
+                                                              errflag);
+
+                }*/
+		/*Added by rubayet*/
             }
         } 
         if (mpi_errno) {
@@ -2838,6 +2864,12 @@ skip_tuning_tables:
     } else {
         /* We use Knomial for intra node */
         MV2_Bcast_intra_node_function = &MPIR_Knomial_Bcast_intra_node_MV2;
+
+	/*@Added by rubayet. Harded coded imposing knomila with factor 2*/
+        MV2_Bcast_intra_node_function = &MPIR_Knomial_Bcast_intra_node_MV2;
+        mv2_intra_node_knomial_factor = 2;
+    	/*Added by rubayet*/
+
         if (mv2_enable_shmem_bcast == 0) {
             /* Fall back to non-tuned version */
             MPIR_Bcast_intra_MV2(buffer, count, datatype, root, comm_ptr, errflag);
