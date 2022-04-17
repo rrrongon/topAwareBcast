@@ -153,6 +153,23 @@ int usleep(useconds_t usec);
 
 #include "mpir_type_defs.h"
 
+/* Added by rubayet*/
+
+typedef struct numa_node_info
+{   
+    size_t core_cnt;
+    int numa_node;
+    int *cores;
+    
+} numa_t;
+
+extern numa_t * numa_infos;
+extern int numa_cnt;
+
+/*Added by rubayet*/
+
+
+
 /* This is the default implementation of MPIU_Memcpy.  We define this
  *    before including mpidpre.h so that it can be used when a device or
  *       channel can use it if it's overriding MPIU_Memcpy.  */

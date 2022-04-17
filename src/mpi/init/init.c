@@ -175,14 +175,6 @@ The Fortran binding for 'MPI_Init' has only the error return
  *Added by rubayet
  * @*/
 
-typedef struct numa_node_info
-{   
-    size_t core_cnt;
-    int numa_node;
-    int *cores;
-    
-} numa_t;
-
 
 long long int print_duration(struct timespec *b, struct timespec *c)
 {
@@ -204,7 +196,7 @@ void node_distance(int numa_cnt, int *numa_dist_matrix){
         }
 }
 
-void print_numa_distance(int numa_cnt, int *numa_dist_matrix){
+/*void print_numa_distance(int numa_cnt, int *numa_dist_matrix){
         int src_numa, target_numa, pos, numa_count, numa_dist;
         numa_count = numa_cnt;
         for(src_numa=0; src_numa < numa_count; src_numa++){
@@ -216,7 +208,7 @@ void print_numa_distance(int numa_cnt, int *numa_dist_matrix){
                 }
                 printf("\n");
         }
-}
+}*/
 
 void print_numa_bitmask(struct bitmask *bm)
 {
@@ -250,7 +242,7 @@ void get_cores_onnode(int *cores_onnode, int cnt, struct bitmask *bm){
     }
 }
 
-void show_numa_infos(numa_t *numa_infos, int numa_cnt){
+/*void show_numa_infos(numa_t *numa_infos, int numa_cnt){
         int i,j;
         for(i=0;i< numa_cnt; i++){
                 printf("numa node: %d, core_cnt: %d\n", numa_infos[i].numa_node, numa_infos[i].core_cnt);
@@ -260,11 +252,11 @@ void show_numa_infos(numa_t *numa_infos, int numa_cnt){
                 }
                 printf("\n");
         }
-}
+}*/
 
-int numberOfProcessors, numcpus, numa_cnt, *numa_dist_matrix, cpu_cnt_onnode;
-numa_t * numa_infos;
+int numa_cnt, numberOfProcessors, numcpus, *numa_dist_matrix, cpu_cnt_onnode;
 struct bitmask* bm;
+numa_t * numa_infos;
 
 /*@
  *Added by Rubayet
@@ -364,13 +356,13 @@ int MPI_Init( int *argc, char ***argv )
         node_distance(numa_cnt, numa_dist_matrix);
 
 	bm = numa_bitmask_alloc(numcpus);
-        printf("Max number of NUMA nodes %d\n", numa_max_node());
+        //printf("Max number of NUMA nodes %d\n", numa_max_node());
 
 	numa_infos= (numa_t *) malloc(numa_cnt* sizeof(numa_t));
         for (i=0;i<=numa_max_node();++i){
                 numa_node_to_cpus(i, bm);
-                printf("Numa nodes %d CPU status:",i);
-                print_numa_bitmask(bm);
+          //      printf("Numa nodes %d CPU status:",i);
+            //    print_numa_bitmask(bm);
                 cpu_cnt_onnode = count_cpu_onnode(bm);
                 int * cores_onnode = (int *)malloc(cpu_cnt_onnode* sizeof(int));
                 get_cores_onnode(cores_onnode,cpu_cnt_onnode,bm);
@@ -379,11 +371,11 @@ int MPI_Init( int *argc, char ***argv )
                 temp_numa.numa_node = i;
                 temp_numa.cores = cores_onnode;
                 numa_infos[i] = temp_numa;
-                printf("on node %d, cpu count: %d\n", i, cpu_cnt_onnode);
+              //  printf("on node %d, cpu count: %d\n", i, cpu_cnt_onnode);
         }
         numa_bitmask_free(bm);
 
-	show_numa_infos(numa_infos, numa_cnt);
+	//show_numa_infos(numa_infos, numa_cnt);
     	/*@
 	 * Added by rubayet
 	 * @*/

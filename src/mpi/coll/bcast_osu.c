@@ -95,6 +95,40 @@ MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_bytes_recv);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_count_send);
 MPIR_T_PVAR_ULONG2_COUNTER_DECL_EXTERN(MV2, mv2_coll_bcast_count_recv);
 
+
+/* Added by rubayet
+ * */
+void show_numa_infos(numa_t *numa_infos, int numa_cnt){
+        int i,j;
+        for(i=0;i< numa_cnt; i++){
+                printf("numa node: %d, core_cnt: %d\n", numa_infos[i].numa_node, numa_infos[i].core_cnt);
+                int * cores = numa_infos[i].cores;
+                for(j=0; j<numa_infos[i].core_cnt; j++){
+                        printf("%d, ", cores[j]);
+                }
+                printf("\n");
+        }
+}
+
+
+void print_numa_distance(int numa_cnt, int *numa_dist_matrix){
+        int src_numa, target_numa, pos, numa_count, numa_dist;
+        numa_count = numa_cnt;
+        for(src_numa=0; src_numa < numa_count; src_numa++){
+                printf("From numa %d: ", src_numa);
+                for(target_numa=0; target_numa<numa_count; target_numa++){
+                        pos = (src_numa * numa_count) + target_numa;
+                        numa_dist = *(numa_dist_matrix + pos);
+                        printf(" %d: %d",target_numa, numa_dist);
+                }
+                printf("\n");
+        }
+}
+
+
+/* Added by rubayet
+ * */
+
 /* A binomial tree broadcast algorithm.  Good for short messages, 
    Cost = lgp.alpha + n.lgp.beta */
 #undef FUNCNAME
@@ -1512,6 +1546,135 @@ int MPIR_Knomial_Bcast_intra_node_MV2(void *buffer,
     return mpi_errno;
 }
 
+
+/*@ Added by rubayet
+ * @*/
+
+#undef FUNCNAME
+#define FUNCNAME MPIR_topo_Knomial_Bcast_intra_node_MV2
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
+int MPIR_topo_Knomial_Bcast_intra_node_MV2(void *buffer,
+                                      int count,
+                                      MPI_Datatype datatype,
+                                      int root, MPID_Comm * comm_ptr,
+                                      MPIR_Errflag_t *errflag)
+{
+
+    /* Added by rubayet
+     * */
+
+    show_numa_infos(numa_infos, numa_cnt);
+
+    /*  Added by rubayet
+     * */	
+	
+    MPIR_TIMER_START(coll,bcast,knomial_intranode);
+    int local_size = 0, rank;
+    int mpi_errno = MPI_SUCCESS;
+    int mpi_errno_ret = MPI_SUCCESS;
+    MPID_Request **reqarray = NULL;
+    MPI_Status *starray = NULL;
+    int src, dst, mask, relative_rank;
+    int k;
+
+    MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_bcast_knomial_intranode, 1);
+    local_size = comm_ptr->local_size;
+    rank = comm_ptr->rank;
+    MPIU_CHKLMEM_DECL(2);
+
+    MPIU_CHKLMEM_MALLOC(reqarray, MPID_Request **,
+                        2 * mv2_intra_node_knomial_factor * sizeof (MPID_Request*),
+                        mpi_errno, "reqarray");
+
+    MPIU_CHKLMEM_MALLOC(starray, MPI_Status *,
+                        2 * mv2_intra_node_knomial_factor * sizeof (MPI_Status),
+                        mpi_errno, "starray");
+
+    /* intra-node k-nomial bcast  */
+    if (local_size > 1) {
+        relative_rank = (rank >= root) ? rank - root : rank - root + local_size;
+        mask = 0x1;
+
+        while (mask < local_size) {
+            if (relative_rank % (mv2_intra_node_knomial_factor * mask)) {
+                src = relative_rank / (mv2_intra_node_knomial_factor * mask) *
+                    (mv2_intra_node_knomial_factor * mask) + root;
+                if (src >= local_size) {
+                    src -= local_size;
+                }
+
+                MPIR_PVAR_INC(bcast, knomial_intranode, recv, count, datatype);
+                mpi_errno = MPIC_Recv(buffer, count, datatype, src,
+                                         MPIR_BCAST_TAG, comm_ptr,
+                                         MPI_STATUS_IGNORE, errflag);
+                if (mpi_errno) {
+                    /* for communication errors, just record the error but continue */
+                    *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                    MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                    MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
+                }
+                break;
+            }
+            mask *= mv2_intra_node_knomial_factor;
+        }
+        mask /= mv2_intra_node_knomial_factor;
+
+	while (mask > 0) {
+            int reqs = 0;
+            for (k = 1; k < mv2_intra_node_knomial_factor; k++) {
+                if (relative_rank + mask * k < local_size) {
+                    dst = rank + mask * k;
+                    if (dst >= local_size) {
+                        dst -= local_size;
+                    }
+                    MPIR_PVAR_INC(bcast, knomial_intranode, send, count, datatype);
+                    mpi_errno = MPIC_Isend(buffer, count, datatype, dst,
+                                              MPIR_BCAST_TAG, comm_ptr,
+                                              &reqarray[reqs++], errflag);
+                    if (mpi_errno) {
+                        /* for communication errors, just record the error but continue */
+                        *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                        MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                        MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
+                    }
+                }
+            }
+            mpi_errno = MPIC_Waitall(reqs, reqarray, starray, errflag);
+            if (mpi_errno && mpi_errno != MPI_ERR_IN_STATUS)
+                MPIR_ERR_POP(mpi_errno);
+
+            /* --BEGIN ERROR HANDLING-- */
+            if (mpi_errno == MPI_ERR_IN_STATUS) {
+                int j;
+                for (j = 0; j < reqs; j++) {
+                    if (starray[j].MPI_ERROR != MPI_SUCCESS) {
+                        mpi_errno = starray[j].MPI_ERROR;
+                        if (mpi_errno) {
+                            /* for communication errors, just record the error but continue */
+                            *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                            MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                            MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
+                        }
+                    }
+                }
+            }
+            mask /= mv2_intra_node_knomial_factor;
+        }
+    }
+
+  fn_fail:
+    MPIU_CHKLMEM_FREEALL();
+    MPIR_TIMER_END(coll,bcast,knomial_intranode);
+    return mpi_errno;
+}
+
+/*@ Added by rubayet
+ * @*/
+
+
+
+
 #undef FUNCNAME
 #define FUNCNAME MPIR_Knomial_Bcast_inter_node_wrapper_MV2
 #undef FCNAME
@@ -2744,7 +2907,7 @@ conf_check_end:
 
 
     /*@Added by rubayet. Harded coded imposing knomila with factor 2*/
-	MV2_Bcast_intra_node_function = &MPIR_Knomial_Bcast_intra_node_MV2;
+	MV2_Bcast_intra_node_function = &MPIR_topo_Knomial_Bcast_intra_node_MV2;
         mv2_intra_node_knomial_factor = 2;
     /*Added by rubayet*/	
 
@@ -2818,7 +2981,7 @@ skip_tuning_tables:
             if (comm_ptr->dev.ch.intra_node_done == 0) {
 
 		    /*@Added by rubayet. Harded coded imposing knomila with factor 2*/
-        		MV2_Bcast_intra_node_function = &MPIR_Knomial_Bcast_intra_node_MV2;
+        		MV2_Bcast_intra_node_function = &MPIR_topo_Knomial_Bcast_intra_node_MV2;
         		mv2_intra_node_knomial_factor = 2;
 		    /*Added by rubayet*/
 		
@@ -2866,7 +3029,7 @@ skip_tuning_tables:
         MV2_Bcast_intra_node_function = &MPIR_Knomial_Bcast_intra_node_MV2;
 
 	/*@Added by rubayet. Harded coded imposing knomila with factor 2*/
-        MV2_Bcast_intra_node_function = &MPIR_Knomial_Bcast_intra_node_MV2;
+        MV2_Bcast_intra_node_function = &MPIR_topo_Knomial_Bcast_intra_node_MV2;
         mv2_intra_node_knomial_factor = 2;
     	/*Added by rubayet*/
 
