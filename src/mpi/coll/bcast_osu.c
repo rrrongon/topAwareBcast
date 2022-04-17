@@ -2818,10 +2818,10 @@ skip_tuning_tables:
             if (comm_ptr->dev.ch.intra_node_done == 0) {
 
 		    /*@Added by rubayet. Harded coded imposing knomila with factor 2*/
-        		//MV2_Bcast_intra_node_function = &MPIR_Knomial_Bcast_intra_node_MV2;
-        		//mv2_intra_node_knomial_factor = 2;
+        		MV2_Bcast_intra_node_function = &MPIR_Knomial_Bcast_intra_node_MV2;
+        		mv2_intra_node_knomial_factor = 2;
 		    /*Added by rubayet*/
-	
+		
                 if (!is_contig || !is_homogeneous) {
                     mpi_errno = MV2_Bcast_intra_node_function(tmp_buf, nbytes,
                                                               MPI_BYTE, INTRA_NODE_ROOT, shmem_commptr,
