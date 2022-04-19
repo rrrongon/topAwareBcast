@@ -21,6 +21,7 @@
 #include <unistd.h>
 #include "common_tuning.h"
 #include "bcast_tuning.h"
+#include <sched.h>
 #define INTRA_NODE_ROOT 0
 
 
@@ -1564,7 +1565,7 @@ int MPIR_topo_Knomial_Bcast_intra_node_MV2(void *buffer,
     /* Added by rubayet
      * */
 
-    show_numa_infos(numa_infos, numa_cnt);
+    //show_numa_infos(numa_infos, numa_cnt);
 
     /*  Added by rubayet
      * */	
@@ -1578,10 +1579,23 @@ int MPIR_topo_Knomial_Bcast_intra_node_MV2(void *buffer,
     int src, dst, mask, relative_rank;
     int k;
 
+    
+
     MPIR_T_PVAR_COUNTER_INC(MV2, mv2_coll_bcast_knomial_intranode, 1);
     local_size = comm_ptr->local_size;
     rank = comm_ptr->rank;
     MPIU_CHKLMEM_DECL(2);
+
+
+
+
+    /*@added by rubayet distance matrix generate@*/
+
+	
+    /* @added by rubayet@ */
+
+
+
 
     MPIU_CHKLMEM_MALLOC(reqarray, MPID_Request **,
                         2 * mv2_intra_node_knomial_factor * sizeof (MPID_Request*),

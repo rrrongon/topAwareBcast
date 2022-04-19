@@ -58,6 +58,7 @@
  *Added by rubayet
  * 
  * @*/
+#include <sched.h>
 
 /*
 === BEGIN_MPI_T_CVAR_INFO_BLOCK ===
@@ -242,22 +243,93 @@ void get_cores_onnode(int *cores_onnode, int cnt, struct bitmask *bm){
     }
 }
 
-/*void show_numa_infos(numa_t *numa_infos, int numa_cnt){
-        int i,j;
-        for(i=0;i< numa_cnt; i++){
-                printf("numa node: %d, core_cnt: %d\n", numa_infos[i].numa_node, numa_infos[i].core_cnt);
-                int * cores = numa_infos[i].cores;
-                for(j=0; j<numa_infos[i].core_cnt; j++){
-                        printf("%d, ", cores[j]);
+void getDistanceMat(int my_core, int my_rank, int world_size, numa_t *numa_infos, int numa_cnt, int *PROC_CORE, int *dist_mat, int * node_dist_mat){
+        int my_numa, my_numa_pos;
+        int i,j,k;
+
+        int *cores;
+        bool found;
+
+        int* PROC_NUMA = (int *) malloc (2 * world_size*sizeof(int));
+        int pos;
+        /*find current proc numa node*/
+        for(k=0; k < world_size; k++){
+                int p_k_core = PROC_CORE[k];
+                /*if(my_rank==0){
+                        printf("proc: %d, core %d\n", k, p_k_core);
+                }*/
+                for(i=0;i<numa_cnt; i++){
+                        numa_t temp_numa = numa_infos[i];
+                        int numa_cr_cnt = temp_numa.core_cnt;
+                        int * numa_cores = temp_numa.cores;;
+                        found = false;
+                        for(j=0;j<numa_cr_cnt;j++){
+                                if(p_k_core==numa_cores[j]){
+                                        my_numa = temp_numa.numa_node;
+                                        my_numa_pos = j;
+                                        found = true;
+                                        break;
+                                }
+                        }
+
+                        if(found)
+                                break;
                 }
-                printf("\n");
+                pos = (k*2);
+                *(PROC_NUMA+pos) = my_numa;
+                *(PROC_NUMA+pos+1) = my_numa_pos;
         }
-}*/
+
+		/*Distance matrix.  go through the PROC_NUMA to calculate*/
+
+        for(k=0;k<world_size;k++){
+                int src_proc = k;
+                int src_numa_node = *(PROC_NUMA + (k*2));
+                int dist;
+                int mat_pos;
+
+                for(j=0;j<world_size; j++){
+                        if(k==j){
+                                dist = 0;
+                        }else{
+                                int dest_numa_node = *(PROC_NUMA+(j*2));
+                                int dest_numa_pos = *(PROC_NUMA+(j*2)+1);
+
+                                int dist_pos = (src_numa_node * numa_cnt) + dest_numa_node;
+                                dist = *(node_dist_mat + dist_pos) * 100 + dest_numa_pos;
+                                //printf("distance: %d   ,", dist);
+                        }
+
+                        mat_pos = ((k*world_size) + j);
+                        *(dist_mat+mat_pos) = dist;
+                }
+        }
+
+        if (my_rank==0 || my_rank== 11){
+                //printf("--" );
+                int mat_pos, dist;
+                for(k=0;k<world_size;k++){
+                        printf("proc %d: ", k);
+                        for(j=0;j<world_size;j++){
+                                mat_pos = ((k*world_size) + j);
+                                dist = *(dist_mat+mat_pos);
+
+                                printf(", %d:%d,",j, dist);
+                        }
+                        printf("\n");
+                }
+        }
+
+}
+
+
 
 int numa_cnt, numberOfProcessors, numcpus, *numa_dist_matrix, cpu_cnt_onnode;
 struct bitmask* bm;
 numa_t * numa_infos;
-
+int core;
+int * PROC_CORE;
+int world_size;
 /*@
  *Added by Rubayet
  * @*/
@@ -375,6 +447,8 @@ int MPI_Init( int *argc, char ***argv )
         }
         numa_bitmask_free(bm);
 
+        core = sched_getcpu();
+
 	//show_numa_infos(numa_infos, numa_cnt);
     	/*@
 	 * Added by rubayet
@@ -404,6 +478,24 @@ int MPI_Init( int *argc, char ***argv )
             }
        } 
     }
+
+
+    /*added by rubayet*/
+    MPID_Comm *comm_ptr = NULL;
+    MPID_Comm_get_ptr(MPI_COMM_WORLD, comm_ptr);
+    world_size =  comm_ptr->local_size;
+    MPI_Comm shmem_comm = comm_ptr->dev.ch.shmem_comm;
+    PROC_CORE = (int *) malloc (world_size * sizeof(int));
+    MPI_Allgather(&core, 1, MPI_INT, PROC_CORE, 1, MPI_INT, shmem_comm);
+
+    int my_rank = comm_ptr->rank;
+
+    int * dist_mat = (int *) malloc(world_size * world_size * sizeof(int));
+    getDistanceMat(core, my_rank, world_size, numa_infos, numa_cnt, PROC_CORE, dist_mat, numa_dist_matrix);
+    free(numa_infos);
+    free(PROC_CORE);
+    free(numa_dist_matrix);
+    /*added by rubayet*/
 
     /* ... end of body of routine ... */
     MPID_MPI_INIT_FUNC_EXIT(MPID_STATE_MPI_INIT);

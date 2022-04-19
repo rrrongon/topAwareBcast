@@ -165,7 +165,9 @@ typedef struct numa_node_info
 
 extern numa_t * numa_infos;
 extern int numa_cnt;
-
+extern int *numa_dist_matrix;
+extern int core;
+extern int * PROC_CORE;
 /*Added by rubayet*/
 
 
