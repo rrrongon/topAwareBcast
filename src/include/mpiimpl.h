@@ -168,6 +168,8 @@ extern int numa_cnt;
 extern int *numa_dist_matrix;
 extern int core;
 extern int * PROC_CORE;
+extern int * M;
+extern int * N;
 /*Added by rubayet*/
 
 

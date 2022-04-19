@@ -191,7 +191,7 @@ void node_distance(int numa_cnt, int *numa_dist_matrix){
                 for(target_numa=0; target_numa< numa_count; target_numa++){
                         pos = (src_numa * numa_count) + target_numa;
                         numa_dist = numa_distance(src_numa, target_numa);
-                        printf("src: %d, dest: %d: %d\n", src_numa, target_numa, numa_dist);
+                        //printf("src: %d, dest: %d: %d\n", src_numa, target_numa, numa_dist);
                         *(numa_dist_matrix + pos)= numa_dist;
                 }
         }
@@ -309,17 +309,126 @@ void getDistanceMat(int my_core, int my_rank, int world_size, numa_t *numa_infos
                 //printf("--" );
                 int mat_pos, dist;
                 for(k=0;k<world_size;k++){
-                        printf("proc %d: ", k);
+                        //printf("proc %d: ", k);
                         for(j=0;j<world_size;j++){
                                 mat_pos = ((k*world_size) + j);
                                 dist = *(dist_mat+mat_pos);
 
-                                printf(", %d:%d,",j, dist);
+                                //printf(", %d:%d,",j, dist);
                         }
-                        printf("\n");
+                        //printf("\n");
                 }
         }
 
+}
+
+
+void sort_val(int * values, int * indexes, int size_n){
+
+        int i,j, a;
+        for (i = 0; i < size_n; ++i){
+                for (j = i + 1; j < size_n; ++j){
+                        if (values[i] > values[j]){
+                                a = values[i];
+                                values[i] = values[j];
+                                values[j] = a;
+
+                                a = indexes[i];
+                                indexes[i] = indexes[j];
+                                indexes[j] = a;
+                        }
+                }
+        }
+
+}
+
+bool alreadyUsed(int potential_rank, int *USED_RANKS){
+        return USED_RANKS[potential_rank];
+}
+
+int find_closest_to(int ref_rank, int world_size, int * dist_mat, int * Next_smallest, int *USED_RANKS){
+        int start, end, i,j, used_ranks, potential_pos;
+        start = (ref_rank * world_size);
+        end = start+world_size;
+
+        int * values = (int*) malloc(world_size * sizeof(int));
+        int * indexes = (int*) malloc(world_size * sizeof(int));
+
+        int pos;
+        pos=0;
+        for(i=start;i<end;i++){
+                *(indexes+pos) = pos;
+                *(values+pos) = *(dist_mat+i);
+                pos++;
+        }
+
+        sort_val(values, indexes, world_size);
+        potential_pos = Next_smallest[ref_rank];
+
+        /*ref rank is at the closest from itself thus skip*/
+        if(potential_pos==0){
+                potential_pos = 1;
+                Next_smallest[ref_rank] = 1;
+        }
+
+        int potential_rank;
+        for(i= potential_pos;i<world_size; i++){
+                potential_rank = indexes[i];
+                if(*(USED_RANKS+potential_rank)==1)
+                        continue;
+                else
+                        break;
+        }
+
+        Next_smallest[ref_rank]++;
+        USED_RANKS[potential_rank] = 1;
+
+        /*for(i=0; i< world_size; i++){
+                printf("%d", USED_RANKS[i]);
+        }*/
+
+        free(values);
+        free(indexes);
+
+        return potential_rank;
+}
+
+
+void rec_binomial(int r, int p, int * M, int * N, int *dist_mat, int * Next_smallest, int * USED_RANKS){
+        int ref_rank = r;
+        int i = 1;
+        int new_rank, target_rank;
+
+        while( ((ref_rank & i )  == 0) && (i < p)){
+                new_rank = ref_rank + i;
+                if(new_rank== p)
+                        return;
+                target_rank = find_closest_to(ref_rank, p, dist_mat, Next_smallest, USED_RANKS);
+
+                //printf("New rank of %d is rank %d, ref rank %d\n", new_rank, target_rank, ref_rank);
+                M[new_rank] = target_rank;
+                N[target_rank] = new_rank;
+
+                rec_binomial(new_rank, p, M, N, dist_mat, Next_smallest, USED_RANKS);
+                i=i*2;
+        }
+}
+
+
+void rank_reordering(int rank, int world_size, int * M, int *N, int * dist_mat, int * Next_smallest, int * USED_RANKS){
+        M[0] = 0;
+        N[0] = 0;
+        USED_RANKS[0] = 1;
+
+        //printf("rank reorder");
+        rec_binomial(0, world_size, M, N, dist_mat, Next_smallest, USED_RANKS);
+}
+
+void showNewRanks(int *M, int world_size){
+        int i;
+        for(i=0;i<world_size;i++){
+                printf("OLD rank %d: NEW RANK %d\n",i, M[i]);
+        }
 }
 
 
@@ -330,6 +439,9 @@ numa_t * numa_infos;
 int core;
 int * PROC_CORE;
 int world_size;
+int * M ;
+int * N;
+
 /*@
  *Added by Rubayet
  * @*/
@@ -495,6 +607,24 @@ int MPI_Init( int *argc, char ***argv )
     free(numa_infos);
     free(PROC_CORE);
     free(numa_dist_matrix);
+
+    M = (int *) malloc(world_size * sizeof(int));
+    N = (int *) malloc(world_size * sizeof(int));
+
+    if(my_rank==0){
+                int * Next_smallest = (int *) calloc(world_size, sizeof(int));
+                int * USED_RANKS = (int *) calloc(world_size, sizeof(int));
+                rank_reordering(my_rank, world_size, M, N, dist_mat, Next_smallest, USED_RANKS);
+                free(Next_smallest);
+                free(USED_RANKS);
+
+                //showNewRanks(N, world_size);
+                //showNewRanks(M, world_size);
+    }
+
+    MPI_Bcast(M, world_size, MPI_INT, 0, shmem_comm);
+    MPI_Bcast(N, world_size, MPI_INT, 0, shmem_comm);
+
     /*added by rubayet*/
 
     /* ... end of body of routine ... */

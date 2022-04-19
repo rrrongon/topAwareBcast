@@ -1576,7 +1576,7 @@ int MPIR_topo_Knomial_Bcast_intra_node_MV2(void *buffer,
     int mpi_errno_ret = MPI_SUCCESS;
     MPID_Request **reqarray = NULL;
     MPI_Status *starray = NULL;
-    int src, dst, mask, relative_rank;
+    int src, dst, mask, relative_rank, reorder_rank, new_src, new_dst;
     int k;
 
     
@@ -1586,8 +1586,7 @@ int MPIR_topo_Knomial_Bcast_intra_node_MV2(void *buffer,
     rank = comm_ptr->rank;
     MPIU_CHKLMEM_DECL(2);
 
-
-
+    reorder_rank = M[rank];
 
     /*@added by rubayet distance matrix generate@*/
 
@@ -1605,21 +1604,26 @@ int MPIR_topo_Knomial_Bcast_intra_node_MV2(void *buffer,
                         2 * mv2_intra_node_knomial_factor * sizeof (MPI_Status),
                         mpi_errno, "starray");
 
-    /* intra-node k-nomial bcast  */
+
+
+   /* intra-node k-nomial bcast  */
     if (local_size > 1) {
-        relative_rank = (rank >= root) ? rank - root : rank - root + local_size;
+        relative_rank = (reorder_rank >= root) ? reorder_rank - root : reorder_rank - root + local_size;
         mask = 0x1;
 
         while (mask < local_size) {
             if (relative_rank % (mv2_intra_node_knomial_factor * mask)) {
+		    
                 src = relative_rank / (mv2_intra_node_knomial_factor * mask) *
                     (mv2_intra_node_knomial_factor * mask) + root;
                 if (src >= local_size) {
                     src -= local_size;
                 }
 
+		new_src = N[src];
+
                 MPIR_PVAR_INC(bcast, knomial_intranode, recv, count, datatype);
-                mpi_errno = MPIC_Recv(buffer, count, datatype, src,
+                mpi_errno = MPIC_Recv(buffer, count, datatype, new_src,
                                          MPIR_BCAST_TAG, comm_ptr,
                                          MPI_STATUS_IGNORE, errflag);
                 if (mpi_errno) {
@@ -1638,14 +1642,18 @@ int MPIR_topo_Knomial_Bcast_intra_node_MV2(void *buffer,
             int reqs = 0;
             for (k = 1; k < mv2_intra_node_knomial_factor; k++) {
                 if (relative_rank + mask * k < local_size) {
-                    dst = rank + mask * k;
+                    dst = reorder_rank + mask * k;
                     if (dst >= local_size) {
                         dst -= local_size;
                     }
+
+		    new_dst = N[dst];
+
                     MPIR_PVAR_INC(bcast, knomial_intranode, send, count, datatype);
-                    mpi_errno = MPIC_Isend(buffer, count, datatype, dst,
+                    mpi_errno = MPIC_Isend(buffer, count, datatype, new_dst,
                                               MPIR_BCAST_TAG, comm_ptr,
                                               &reqarray[reqs++], errflag);
+
                     if (mpi_errno) {
                         /* for communication errors, just record the error but continue */
                         *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
