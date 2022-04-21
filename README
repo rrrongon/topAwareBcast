@@ -55,6 +55,6 @@ well as submitting bug reports and suggestions.
 
     http://mail.cse.ohio-state.edu/mailman/listinfo/mvapich-discuss/
 
-##  Core-to-Core distance aware intranode Broadcast algorithm extension
+##Core-to-Core distance aware intranode Broadcast algorithm extension
 Details of the work can be found on [this presentation](https://docs.google.com/presentation/d/1xmRGvuN0KcXAavS3MpDIkUJO0GWwswIV/edit?usp=sharing&ouid=102426176959162678837&rtpof=true&sd=true)
 
